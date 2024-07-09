@@ -75,7 +75,7 @@ struct SwapChainSupportDetails {
 };
 
 struct Vertex {
-    glm::vec2 pos;
+    glm::vec3 pos;
     glm::vec3 color;
 
     static VkVertexInputBindingDescription getBindingDescription() {
@@ -92,7 +92,7 @@ struct Vertex {
 
         attributeDescriptions[0].binding = 0;
         attributeDescriptions[0].location = 0;
-        attributeDescriptions[0].format = VK_FORMAT_R32G32_SFLOAT;
+        attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
         attributeDescriptions[0].offset = offsetof(Vertex, pos);
 
         attributeDescriptions[1].binding = 0;
@@ -110,22 +110,61 @@ struct UniformBufferObject {
     alignas(16) glm::mat4 proj;
 };
 
-const std::vector<Vertex> vertices = {
-    {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-    {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
-    {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
-    {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}
-};
+// Generate a grid of vertices
+std::vector<Vertex> generateVertexGrid(int width, int height) {
+    std::vector<Vertex> tempVertices;
+    for (int j = 0; j < height; j++) {
+        for (int i = 0; i < width; i++) {
+            Vertex vertex;
+            vertex.pos = glm::vec3(
+                (i / (float)(width - 1)) * 2.0f - 1.0f,
+                0.0f,
+                (j / (float)(height - 1)) * 2.0f - 1.0f);
+            vertex.color = glm::vec3(1.0f);
+            tempVertices.push_back(vertex);
+        }
+    }
+    return tempVertices;
+}
 
-const std::vector<uint16_t> indices = {
-    0,1,2,2,3,0
-};
+std::vector<uint16_t> generateGridIndex(int gridSize) {
+    std::vector<uint16_t> tempIndices;
+
+    for (int j = 0; j < gridSize; j++) {
+        for (int i = 0; i < gridSize; i++) {
+            // Top-left vertex of the cell
+            uint32_t topLeft = j * (gridSize + 1) + i;
+            // Top-right vertex of the cell
+            uint32_t topRight = topLeft + 1;
+            // Bottom-left vertex of the cell
+            uint32_t bottomLeft = topLeft + (gridSize + 1);
+            // Bottom-right vertex of the cell
+            uint32_t bottomRight = bottomLeft + 1;
+
+            // First triangle (top-left, bottom-left, bottom-right)
+            tempIndices.push_back(topLeft);
+            tempIndices.push_back(bottomLeft);
+            tempIndices.push_back(bottomRight);
+
+            // Second triangle (top-left, bottom-right, top-right)
+            tempIndices.push_back(topLeft);
+            tempIndices.push_back(bottomRight);
+            tempIndices.push_back(topRight);
+        }
+    }
+    return tempIndices;
+}
+
+std::vector<Vertex> vertices{ generateVertexGrid(11,11) };
+std::vector<uint16_t> indices{ generateGridIndex(10) };
+
+
 
 // ----------------------------------------------------------------------------------------------------------------------------
-// HelloTriangle
+// OceanWaves
 // ----------------------------------------------------------------------------------------------------------------------------
 
-class HelloTriangleApplication {
+class OceanWavesApplication {
 public:
     void run() {
         initWindow();
@@ -194,7 +233,7 @@ private:
     }
 
     static void framebufferResizeCallback(GLFWwindow* window, int width, int height) {
-        auto app = reinterpret_cast<HelloTriangleApplication*>(glfwGetWindowUserPointer(window));
+        auto app = reinterpret_cast<OceanWavesApplication*>(glfwGetWindowUserPointer(window));
         app->framebufferResized = true;
     }
 
@@ -1025,8 +1064,8 @@ private:
         float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
 
         UniformBufferObject ubo{};
-        ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-        ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        ubo.model = glm::mat4(1.0f);
+        ubo.view = glm::lookAt(glm::vec3(0.0f, 1.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
         ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float)swapChainExtent.height, 0.1f, 10.0f);
         ubo.proj[1][1] *= -1;
 
@@ -1308,7 +1347,7 @@ private:
 };
 
 int main() {
-    HelloTriangleApplication app;
+    OceanWavesApplication app;
 
     try {
         app.run();
