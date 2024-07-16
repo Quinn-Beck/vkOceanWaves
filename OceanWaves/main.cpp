@@ -24,10 +24,10 @@ const uint32_t HEIGHT = 600;
 
 const int MAX_FRAMES_IN_FLIGHT = 2;
 
-int VERTEX_WIDTH = 16;
-int VERTEX_HEIGHT = 16;
+int VERTEX_WIDTH = 256;
+int VERTEX_HEIGHT = 256;
 int VERTEX_COUNT = VERTEX_WIDTH * VERTEX_HEIGHT;
-int GRIDSIZE = 15;
+int GRIDSIZE = VERTEX_WIDTH - 1;
 
 // ----------------------------------------------------------------------------------------------------------------------------
 // VALIDATION LAYERS 
@@ -119,7 +119,7 @@ struct UniformBufferObject {
     alignas(16) glm::mat4 model;
     alignas(16) glm::mat4 view;
     alignas(16) glm::mat4 proj;
-    alignas(16) float deltaTime = 1.0f;
+    alignas(16) float t = 1.0f;
 };
 
 // Generate a grid of vertices
@@ -129,9 +129,9 @@ std::vector<Vertex> generateVertexGrid(int width, int height) {
         for (int i = 0; i < width; i++) {
             Vertex vertex;
             vertex.pos = glm::vec3(
-                (i / (float)(width - 1)) * 2.0f - 1.0f,
+                20.0*((i / (float)(width - 1)) * 2.0f - 1.0f),
                 0.0f,
-                (j / (float)(height - 1)) * 2.0f - 1.0f);
+                20.0*((j / (float)(height - 1)) * 2.0f - 1.0f));
             vertex.norm = glm::vec3(0.0f, 1.0f, 0.0f);
             vertex.color = glm::vec3(1.0f);
             tempVertices.push_back(vertex);
@@ -170,7 +170,7 @@ std::vector<uint16_t> generateGridIndex(int gridSize) {
 
 // MOVED TO CREATESHADERSTORAGEBUFFER FUNCTION
 // std::vector<Vertex> vertices{ generateVertexGrid(11,11) };
-std::vector<uint16_t> indices{ generateGridIndex(15) };
+std::vector<uint16_t> indices{ generateGridIndex(GRIDSIZE) };
 
 
 
@@ -951,7 +951,7 @@ private:
         shaderStorageBuffers.resize(MAX_FRAMES_IN_FLIGHT);
         shaderStorageBuffersMemory.resize(MAX_FRAMES_IN_FLIGHT);
 
-        // Copy initial particle data to all storage buffers
+        // Copy initial vertex data to all storage buffers
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
             createBuffer(bufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
                 VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, shaderStorageBuffers[i], shaderStorageBuffersMemory[i]);
@@ -1265,10 +1265,10 @@ private:
 
         UniformBufferObject ubo{};
         ubo.model = glm::mat4(1.0f);
-        ubo.view = glm::lookAt(glm::vec3(0.0f, 1.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-        ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float)swapChainExtent.height, 0.1f, 10.0f);
+        ubo.view = glm::lookAt(glm::vec3(0.0f, 13.0f, 40.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+        ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float)swapChainExtent.height, 0.1f, 75.0f);
         ubo.proj[1][1] *= -1;
-        ubo.deltaTime = lastFrameTime * 2.0f;
+        ubo.t = time;
 
         memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
     }

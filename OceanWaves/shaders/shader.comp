@@ -6,12 +6,32 @@ struct Vertex {
 	vec3 color;
 };
 
+struct WaveParams {
+	float amp;
+	float freq;
+	float phase;
+	vec2 dir;
+};
+
+WaveParams createWaveParams(float a, float f, float p, vec2 d) {
+	WaveParams tempWave;
+	tempWave.amp = a;
+	tempWave.freq = f;
+	tempWave.phase = p;
+	tempWave.dir = d;
+	return tempWave;
+}
+
+WaveParams Waves[2] = { createWaveParams(1.0, 1.0 / 5.0, 1.2, vec2(0.2,0.5)),
+						createWaveParams(0.5, 1.0 / 4.0, 2.7, vec2(0.707,0.707))
+};
+
 layout(std140, binding = 0) uniform ParameterUBO {
 	mat4 model;
 	mat4 view;
 	mat4 proj;
-	float deltaTime;
-};
+	float t;
+} ubo;
 
 layout(std140, binding = 1) readonly buffer VertexSSBOIn {
 	Vertex verticesIn[ ];
@@ -28,7 +48,15 @@ void main() {
 
 	Vertex vertexIn = verticesIn[index];
 
-	verticesOut[index].pos = verticesIn[index].pos;
-	verticesOut[index].norm = verticesIn[index].norm;
-	verticesOut[index].color = verticesIn[index].color;
+	float waveHeight = Waves[0].amp * sin( dot(Waves[0].dir, verticesIn[index].pos.xz) + ubo.t*Waves[0].phase ) +
+					   Waves[1].amp * sin( dot(Waves[1].dir, verticesIn[index].pos.xz) + ubo.t*Waves[1].phase );
+
+	float partialHeightX = Waves[0].amp * Waves[0].dir.x * Waves[0].freq * cos( dot(Waves[0].dir, verticesIn[index].pos.xz) + ubo.t*Waves[0].phase ) +
+						   Waves[1].amp * Waves[1].dir.x * Waves[1].freq * cos( dot(Waves[1].dir, verticesIn[index].pos.xz) + ubo.t*Waves[1].phase );
+	
+	float partialHeightZ = Waves[0].amp * Waves[0].dir.y * Waves[0].freq * cos( dot(Waves[0].dir, verticesIn[index].pos.xz) + ubo.t*Waves[0].phase ) +
+						   Waves[1].amp * Waves[1].dir.y * Waves[1].freq * cos( dot(Waves[1].dir, verticesIn[index].pos.xz) + ubo.t*Waves[1].phase );
+	verticesOut[index].pos = vec3(verticesIn[index].pos.x, waveHeight, verticesIn[index].pos.z);
+	verticesOut[index].norm = normalize(vec3( -partialHeightX, 1, -partialHeightZ ));
+	verticesOut[index].color = verticesOut[index].norm;
 }
