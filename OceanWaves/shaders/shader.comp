@@ -1,30 +1,27 @@
 #version 450
 
+float hash(float n) {
+    return fract(sin(n) * 43758.5453123);
+}
+
 struct Vertex {
 	vec3 pos;
 	vec3 norm;
 	vec3 color;
 };
 
-struct WaveParams {
-	float amp;
+struct Wave {
+    float amp;
 	float freq;
-	float phase;
-	vec2 dir;
+    float speed;
+    float angle;
 };
 
-WaveParams createWaveParams(float a, float f, float p, vec2 d) {
-	WaveParams tempWave;
-	tempWave.amp = a;
-	tempWave.freq = f;
-	tempWave.phase = p;
-	tempWave.dir = d;
-	return tempWave;
+vec2 polarToCartesian(float r, float theta) {
+    float x = r * cos(theta);
+    float y = r * sin(theta);
+    return vec2(x, y);
 }
-
-WaveParams Waves[2] = { createWaveParams(1.0, 1.0 / 5.0, 1.2, vec2(0.2,0.5)),
-						createWaveParams(0.5, 1.0 / 4.0, 2.7, vec2(0.707,0.707))
-};
 
 layout(std140, binding = 0) uniform ParameterUBO {
 	mat4 model;
@@ -41,6 +38,10 @@ layout(std140, binding = 2) buffer VertexSSBOOut {
 	Vertex verticesOut[ ];
 };
 
+layout(std140, binding = 3) readonly buffer WaveSSBO {
+	Wave Waves[ ];
+};
+
 layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 
 void main() {
@@ -48,14 +49,27 @@ void main() {
 
 	Vertex vertexIn = verticesIn[index];
 
-	float waveHeight = Waves[0].amp * sin( dot(Waves[0].dir, verticesIn[index].pos.xz) + ubo.t*Waves[0].phase ) +
-					   Waves[1].amp * sin( dot(Waves[1].dir, verticesIn[index].pos.xz) + ubo.t*Waves[1].phase );
+	float waveTerm = 0.0;
+	float waveHeight = 0.0;
+	float partialWaveX = 0.0;
+	float partialWaveZ = 0.0;
+	float partialHeightX = 0.0;
+	float partialHeightZ = 0.0;
+	for (int i = 0; i < 6; i++) {
+		vec2 waveDir = polarToCartesian(1.0, Waves[i].angle);
+		vec2 sampleVertex = vec2(verticesIn[index].pos.x + partialWaveX, verticesIn[index].pos.z + partialWaveZ);
 
-	float partialHeightX = Waves[0].amp * Waves[0].dir.x * Waves[0].freq * cos( dot(Waves[0].dir, verticesIn[index].pos.xz) + ubo.t*Waves[0].phase ) +
-						   Waves[1].amp * Waves[1].dir.x * Waves[1].freq * cos( dot(Waves[1].dir, verticesIn[index].pos.xz) + ubo.t*Waves[1].phase );
-	
-	float partialHeightZ = Waves[0].amp * Waves[0].dir.y * Waves[0].freq * cos( dot(Waves[0].dir, verticesIn[index].pos.xz) + ubo.t*Waves[0].phase ) +
-						   Waves[1].amp * Waves[1].dir.y * Waves[1].freq * cos( dot(Waves[1].dir, verticesIn[index].pos.xz) + ubo.t*Waves[1].phase );
+		waveTerm = exp( Waves[i].amp * sin( dot(waveDir, sampleVertex) + ubo.t*Waves[i].speed * Waves[i].freq ) - 1.0 );
+		waveHeight += waveTerm;
+
+		partialWaveX = Waves[i].amp * waveDir.x * Waves[i].freq * cos( dot(waveDir, sampleVertex) + ubo.t*Waves[i].speed * Waves[i].freq ) * waveTerm;
+		partialWaveZ = Waves[i].amp * waveDir.y * Waves[i].freq * cos( dot(waveDir, sampleVertex) + ubo.t*Waves[i].speed * Waves[i].freq ) * waveTerm;
+		partialHeightX += partialWaveX;
+		partialHeightZ += partialWaveZ;
+
+
+	}
+
 	verticesOut[index].pos = vec3(verticesIn[index].pos.x, waveHeight, verticesIn[index].pos.z);
 	verticesOut[index].norm = normalize(vec3( -partialHeightX, 1, -partialHeightZ ));
 	verticesOut[index].color = verticesOut[index].norm;

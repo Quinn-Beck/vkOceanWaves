@@ -2,6 +2,7 @@
 #include <GLFW/glfw3.h>
 
 #define GLMF_FORCE_RADIANS
+#define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -18,16 +19,19 @@
 #include <optional>
 #include <set>
 #include <array>
+#include <random>
 
 const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
 
 const int MAX_FRAMES_IN_FLIGHT = 2;
 
-int VERTEX_WIDTH = 256;
-int VERTEX_HEIGHT = 256;
-int VERTEX_COUNT = VERTEX_WIDTH * VERTEX_HEIGHT;
-int GRIDSIZE = VERTEX_WIDTH - 1;
+const float PI = 3.1415926535897932384626433832795f;
+const int NUM_WAVES = 16;
+const int VERTEX_WIDTH = 256;
+const int VERTEX_HEIGHT = 256;
+const int VERTEX_COUNT = VERTEX_WIDTH * VERTEX_HEIGHT;
+const int GRIDSIZE = VERTEX_WIDTH - 1;
 
 // ----------------------------------------------------------------------------------------------------------------------------
 // VALIDATION LAYERS 
@@ -115,6 +119,13 @@ struct Vertex {
     }
 };
 
+struct Wave {
+    float amp;
+    float freq;
+    float speed;
+    float angle;
+};
+
 struct UniformBufferObject {
     alignas(16) glm::mat4 model;
     alignas(16) glm::mat4 view;
@@ -129,15 +140,44 @@ std::vector<Vertex> generateVertexGrid(int width, int height) {
         for (int i = 0; i < width; i++) {
             Vertex vertex;
             vertex.pos = glm::vec3(
-                20.0*((i / (float)(width - 1)) * 2.0f - 1.0f),
+                5.0f*((i / (float)(width - 1)) * 2.0f - 1.0f),
                 0.0f,
-                20.0*((j / (float)(height - 1)) * 2.0f - 1.0f));
+                5.0f*((j / (float)(height - 1)) * 2.0f - 1.0f));
             vertex.norm = glm::vec3(0.0f, 1.0f, 0.0f);
             vertex.color = glm::vec3(1.0f);
             tempVertices.push_back(vertex);
         }
     }
     return tempVertices;
+}
+
+std::vector<Wave> createWaves(float iniAmp, float iniFreq, float iniSpeed, float iniAngle) {
+    std::random_device rd;
+    std::mt19937 gen(rd()); // Mersenne Twister generator
+
+    // Create a uniform distribution between 0 and 1
+    std::uniform_real_distribution<> dis(0.0, 2.0*PI);
+
+    // Initialize waves
+    float fbmAmp = 0.82f;
+    float fbmFreq = 1.18f;
+    float speedRamp = 1.07f;
+    //float deltaAngle = PI / (4.0f * ((float)NUM_WAVES - 1.0f));
+
+    std::vector<Wave> Waves;
+    Waves.resize(NUM_WAVES);
+    for (int i = 0; i < NUM_WAVES; i++) {
+        Waves[i].amp = iniAmp * pow(fbmAmp, i);
+        Waves[i].freq = iniFreq * pow(fbmFreq, i);
+        Waves[i].speed = iniSpeed * pow(speedRamp, i);
+        //Waves[i].phase = Waves[i].speed * (float)sqrt(9.8f * PI * Waves[i].freq);
+        //Waves[i].speed = 10.0f / sqrt(9.81f/(2.0f*PI*Waves[i].freq));
+        //Waves[i].speed = Waves[i].freq / (Waves[i].amp + 0.5f) + 0.1f*i;
+        //Waves[i].angle = iniAngle + pow(-1.0f, i) * i * deltaAngle;
+        Waves[i].angle = iniAngle + i*dis(gen);
+    }
+
+    return Waves;
 }
 
 std::vector<uint16_t> generateGridIndex(int gridSize) {
@@ -168,10 +208,8 @@ std::vector<uint16_t> generateGridIndex(int gridSize) {
     return tempIndices;
 }
 
-// MOVED TO CREATESHADERSTORAGEBUFFER FUNCTION
-// std::vector<Vertex> vertices{ generateVertexGrid(11,11) };
+// Initialize indices
 std::vector<uint16_t> indices{ generateGridIndex(GRIDSIZE) };
-
 
 
 // ----------------------------------------------------------------------------------------------------------------------------
@@ -226,6 +264,9 @@ private:
     
     std::vector<VkBuffer> shaderStorageBuffers;
     std::vector<VkDeviceMemory> shaderStorageBuffersMemory;
+
+    std::vector<VkBuffer> waveShaderStorageBuffers;
+    std::vector<VkDeviceMemory> waveShaderStorageBuffersMemory;
 
     std::vector<VkBuffer> uniformBuffers;
     std::vector<VkDeviceMemory> uniformBuffersMemory;
@@ -282,6 +323,7 @@ private:
         // createVertexBuffer();
         createIndexBuffer();
         createShaderStorageBuffers();
+        createWaveShaderStorageBuffers();
         createUniformBuffers();
         createDescriptorPool();
         createDescriptorSets();
@@ -346,6 +388,8 @@ private:
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
             vkDestroyBuffer(device, shaderStorageBuffers[i], nullptr);
             vkFreeMemory(device, shaderStorageBuffersMemory[i], nullptr);
+            vkDestroyBuffer(device, waveShaderStorageBuffers[i], nullptr);
+            vkFreeMemory(device, waveShaderStorageBuffersMemory[i], nullptr);
         }
 
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
@@ -396,7 +440,7 @@ private:
 
         VkApplicationInfo appInfo{};
         appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-        appInfo.pApplicationName = "Hello Triangle";
+        appInfo.pApplicationName = "Ocean Waves";
         appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
         appInfo.pEngineName = "No Engine";
         appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
@@ -659,7 +703,7 @@ private:
     }
 
     void createDescriptorSetLayout() {
-        std::array<VkDescriptorSetLayoutBinding, 3> layoutBindings{};
+        std::array<VkDescriptorSetLayoutBinding, 4> layoutBindings{};
         layoutBindings[0].binding = 0;
         layoutBindings[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         layoutBindings[0].descriptorCount = 1;
@@ -678,9 +722,15 @@ private:
         layoutBindings[2].stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
         layoutBindings[2].pImmutableSamplers = nullptr;
 
+        layoutBindings[3].binding = 3;
+        layoutBindings[3].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        layoutBindings[3].descriptorCount = 1;
+        layoutBindings[3].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+        layoutBindings[3].pImmutableSamplers = nullptr;
+
         VkDescriptorSetLayoutCreateInfo layoutInfo{};
         layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        layoutInfo.bindingCount = 3;
+        layoutInfo.bindingCount = 4;
         layoutInfo.pBindings = layoutBindings.data();
         if (vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS) {
             throw std::runtime_error("failed to create descriptor set layout!");
@@ -934,7 +984,6 @@ private:
     void createShaderStorageBuffers() {
         // Initialize vertices
         std::vector<Vertex> vertices{ generateVertexGrid(VERTEX_WIDTH,VERTEX_HEIGHT) };
-        // std::vector<uint16_t> indices{ generateGridIndex(GRIDSIZE) };
 
         VkDeviceSize bufferSize = sizeof(Vertex) * VERTEX_COUNT;
 
@@ -956,6 +1005,37 @@ private:
             createBuffer(bufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
                 VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, shaderStorageBuffers[i], shaderStorageBuffersMemory[i]);
             copyBuffer(stagingBuffer, shaderStorageBuffers[i], bufferSize);
+        }
+
+        vkDestroyBuffer(device, stagingBuffer, nullptr);
+        vkFreeMemory(device, stagingBufferMemory, nullptr);
+    }
+
+    void createWaveShaderStorageBuffers() {
+        // Initialize waves
+        std::vector<Wave> waves{ createWaves(1.0f, 1.0f, 1.0f, 0.0f) };
+
+        VkDeviceSize bufferSize = sizeof(Wave) * waves.size();
+
+        // Create a staging buffer used to upload data to the gpu
+        VkBuffer stagingBuffer;
+        VkDeviceMemory stagingBufferMemory;
+        createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
+
+        void* waveData;
+        vkMapMemory(device, stagingBufferMemory, 0, bufferSize, 0, &waveData);
+        memcpy(waveData, waves.data(), (size_t)bufferSize);
+        vkUnmapMemory(device, stagingBufferMemory);
+
+        waveShaderStorageBuffers.resize(MAX_FRAMES_IN_FLIGHT);
+        waveShaderStorageBuffersMemory.resize(MAX_FRAMES_IN_FLIGHT);
+
+        // Copy wave data to all storage buffers
+        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+            createBuffer(bufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, 
+                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 
+                waveShaderStorageBuffers[i], waveShaderStorageBuffersMemory[i]);
+            copyBuffer(stagingBuffer, waveShaderStorageBuffers[i], bufferSize);
         }
 
         vkDestroyBuffer(device, stagingBuffer, nullptr);
@@ -984,7 +1064,7 @@ private:
         poolSizes[0].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
 
         poolSizes[1].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        poolSizes[1].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT) * 2;
+        poolSizes[1].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT) * 3;
 
         VkDescriptorPoolCreateInfo poolInfo{};
         poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -1016,7 +1096,7 @@ private:
             uniformBufferInfo.offset = 0;
             uniformBufferInfo.range = sizeof(UniformBufferObject);
 
-            std::array<VkWriteDescriptorSet, 3> descriptorWrites{};
+            std::array<VkWriteDescriptorSet, 4> descriptorWrites{};
             descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
             descriptorWrites[0].dstSet = descriptorSets[i];
             descriptorWrites[0].dstBinding = 0;
@@ -1051,8 +1131,23 @@ private:
             descriptorWrites[2].descriptorCount = 1;
             descriptorWrites[2].pBufferInfo = &storageBufferInfoCurrentFrame;
 
-            vkUpdateDescriptorSets(device, 3, descriptorWrites.data(), 0, nullptr);
+            VkDescriptorBufferInfo waveBufferInfo{};
+            waveBufferInfo.buffer = waveShaderStorageBuffers[i];
+            waveBufferInfo.offset = 0;
+            waveBufferInfo.range = sizeof(Wave) * NUM_WAVES;
+
+            descriptorWrites[3].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            descriptorWrites[3].dstSet = descriptorSets[i];
+            descriptorWrites[3].dstBinding = 3;
+            descriptorWrites[3].dstArrayElement = 0;
+            descriptorWrites[3].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            descriptorWrites[3].descriptorCount = 1;
+            descriptorWrites[3].pBufferInfo = &waveBufferInfo;
+
+            vkUpdateDescriptorSets(device, 4, descriptorWrites.data(), 0, nullptr);
         }
+
+
     }
 
     void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory) {
@@ -1265,8 +1360,8 @@ private:
 
         UniformBufferObject ubo{};
         ubo.model = glm::mat4(1.0f);
-        ubo.view = glm::lookAt(glm::vec3(0.0f, 13.0f, 40.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-        ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float)swapChainExtent.height, 0.1f, 75.0f);
+        ubo.view = glm::lookAt(glm::vec3(0.0f, 7.0f, 10.0f), glm::vec3(0.0f, 3.0f, -2.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+        ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float)swapChainExtent.height, 0.1f, 100.0f);
         ubo.proj[1][1] *= -1;
         ubo.t = time;
 
