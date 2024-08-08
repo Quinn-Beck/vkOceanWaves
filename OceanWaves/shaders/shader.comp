@@ -24,8 +24,11 @@ vec2 polarToCartesian(float r, float theta) {
 }
 
 layout(std140, binding = 0) uniform ParameterUBO {
+	vec3 eye;
 	mat4 model;
 	mat4 view;
+	mat4 invView;
+	mat4 normalMat;
 	mat4 proj;
 	float t;
 } ubo;
@@ -55,22 +58,34 @@ void main() {
 	float partialWaveZ = 0.0;
 	float partialHeightX = 0.0;
 	float partialHeightZ = 0.0;
-	for (int i = 0; i < 6; i++) {
+	float sumOfWeights = 0.0;
+	vec2 sampleVertex = vec2(verticesIn[index].pos.x, verticesIn[index].pos.z);
+	for (int i = 0; i < 8; i++) {
 		vec2 waveDir = polarToCartesian(1.0, Waves[i].angle);
-		vec2 sampleVertex = vec2(verticesIn[index].pos.x + partialWaveX, verticesIn[index].pos.z + partialWaveZ);
+		//vec2 sampleVertex = vec2(verticesIn[index].pos.x, verticesIn[index].pos.z);
+		//vec2 sampleVertex = vec2(verticesIn[index].pos.x + partialWaveX, verticesIn[index].pos.z + partialWaveZ);
 
-		waveTerm = exp( Waves[i].amp * sin( dot(waveDir, sampleVertex) + ubo.t*Waves[i].speed * Waves[i].freq ) - 1.0 );
+		//float arg = dot(waveDir, sampleVertex) * Waves[i].freq + ubo.t*Waves[i].speed + (length(sampleVertex) * 0.1);
+
+		float arg = dot(waveDir, sampleVertex) * Waves[i].freq + ubo.t*Waves[i].speed*Waves[i].freq;
+
+		waveTerm = exp( Waves[i].amp * sin( arg ) - 1.0 );
 		waveHeight += waveTerm;
 
-		partialWaveX = Waves[i].amp * waveDir.x * Waves[i].freq * cos( dot(waveDir, sampleVertex) + ubo.t*Waves[i].speed * Waves[i].freq ) * waveTerm;
-		partialWaveZ = Waves[i].amp * waveDir.y * Waves[i].freq * cos( dot(waveDir, sampleVertex) + ubo.t*Waves[i].speed * Waves[i].freq ) * waveTerm;
+		partialWaveX = Waves[i].amp * cos( arg ) * waveTerm;
+		//partialWaveZ = cos( arg ) * waveTerm;
+		partialWaveZ = partialWaveX;
+		
 		partialHeightX += partialWaveX;
-		partialHeightZ += partialWaveZ;
+		partialHeightZ = partialHeightX;
 
+		sampleVertex += waveDir * partialWaveX * Waves[i].amp * 0.38; // 0.38 is the drag multiplier
 
+		sumOfWeights += Waves[i].amp;
 	}
+	waveHeight /= sumOfWeights;
 
 	verticesOut[index].pos = vec3(verticesIn[index].pos.x, waveHeight, verticesIn[index].pos.z);
-	verticesOut[index].norm = normalize(vec3( -partialHeightX, 1, -partialHeightZ ));
+	verticesOut[index].norm = normalize(vec3( -partialHeightX, 1.0, -partialHeightZ ));
 	verticesOut[index].color = verticesOut[index].norm;
 }

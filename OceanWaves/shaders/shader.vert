@@ -7,8 +7,11 @@ struct Vertex {
 };
 
 layout(binding = 0) uniform ParameterUBO {
+    vec3 eye;
     mat4 model;
     mat4 view;
+    mat4 invView;
+    mat4 normalMat;
     mat4 proj;
     float deltaTime;
 } ubo;
@@ -23,14 +26,21 @@ layout(location = 2) out vec3 fragView;
 
 void main() {
     uint index = gl_VertexIndex;
+
+    // Vertex attributes in world space
     vec3 position = vertices[index].pos;
     vec3 normal = vertices[index].norm;
     vec3 color = vertices[index].color;
 
-    vec4 viewPosition = ubo.view * ubo.model * vec4(position, 1.0);
-    fragCoord = viewPosition.xyz;
-    fragNormal = normal;
-    fragView = (ubo.view * vec4(0.0, 13.0, 40.0, 1.0)).xyz;
+    // TODO: Update this for dynamic camera, will likely need to fetch location each frame
+    // Get eye position from inverse view matrix
+    // vec3 eyePosition = vec3(ubo.invView[0][3], ubo.invView[1][3], ubo.invView[2][3]);
 
-    gl_Position = ubo.proj * viewPosition;
+    vec4 vertPosition = ubo.view * ubo.model * vec4(position, 1.0);
+
+    fragCoord = vec3(vertPosition) / vertPosition.w;
+    fragNormal = normalize(vec3(ubo.normalMat * vec4(normal, 1.0)));
+    fragView = normalize(ubo.view * ubo.model * vec4(ubo.eye - position, 1.0)).xyz;
+
+    gl_Position = ubo.proj * ubo.view * ubo.model * vec4(position, 1.0);
 }
