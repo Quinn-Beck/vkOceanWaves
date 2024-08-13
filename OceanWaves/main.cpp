@@ -192,8 +192,12 @@ std::vector<Wave> createWaves(float iniAmp, float iniLen, float iniSpeed, float 
         //Waves[i].angle = iniAngle + pow(-1.0f, i) * i * deltaAngle;
         if (i < 1) {
             Waves[i].angle = iniAngle;
+            Waves[i].freq = 2.0f / iniLen;
         }
-        else { Waves[i].angle = iniAngle + dis(gen); }
+        else { 
+            Waves[i].angle = iniAngle + dis(gen);
+            Waves[i].freq = Waves[i - 1].freq * pow(fbmFreq, i);
+        }
     }
 
     return Waves;

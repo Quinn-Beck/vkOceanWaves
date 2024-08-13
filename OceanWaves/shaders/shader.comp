@@ -60,7 +60,7 @@ void main() {
 	float partialHeightZ = 0.0;
 	float sumOfWeights = 0.0;
 	vec2 sampleVertex = vec2(verticesIn[index].pos.x, verticesIn[index].pos.z);
-	for (int i = 0; i < 1; i++) {
+	for (int i = 0; i < 4; i++) {
 		vec2 waveDir = polarToCartesian(1.0, Waves[i].angle);
 		//vec2 sampleVertex = vec2(verticesIn[index].pos.x, verticesIn[index].pos.z);
 		//vec2 sampleVertex = vec2(verticesIn[index].pos.x + partialWaveX, verticesIn[index].pos.z + partialWaveZ);
@@ -72,14 +72,13 @@ void main() {
 		waveTerm = Waves[i].amp * exp( sin( arg ) - 1.0 );
 		waveHeight += waveTerm;
 
-		partialWaveX = Waves[i].amp * cos( arg ) * waveTerm;
-		//partialWaveZ = cos( arg ) * waveTerm;
-		partialWaveZ = partialWaveX;
+		partialWaveX = waveDir.x * Waves[i].freq * Waves[i].amp * cos( arg ) * waveTerm;
+		partialWaveZ = waveDir.y * Waves[i].freq * Waves[i].amp * cos( arg ) * waveTerm;
 		
 		partialHeightX += partialWaveX;
-		partialHeightZ = partialHeightX;
+		partialHeightZ += partialWaveZ;
 
-		//sampleVertex += waveDir * partialWaveX * Waves[i].amp * 0.38; // 0.38 is the drag multiplier
+		sampleVertex += waveDir * partialWaveX * Waves[i].amp * 0.38; // 0.38 is the drag multiplier
 
 		sumOfWeights += Waves[i].amp;
 	}

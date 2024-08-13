@@ -39,5 +39,5 @@ void main() {
     vec3 C = mix(vec3(0.0), vec3(1.0), diffuse + vec3(0.0,0.0,0.1) + specular);
 
 
-    outColor = vec4(diffuse, 1.0);
+    outColor = vec4(C, 1.0);
 }
