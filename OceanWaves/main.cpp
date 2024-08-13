@@ -158,7 +158,7 @@ std::vector<Vertex> generateVertexGrid(int width, int height) {
     return tempVertices;
 }
 
-std::vector<Wave> createWaves(float iniAmp, float iniFreq, float iniSpeed, float iniAngle) {
+std::vector<Wave> createWaves(float iniAmp, float iniLen, float iniSpeed, float iniAngle) {
     std::random_device rd;
     std::mt19937 gen(rd()); // Mersenne Twister generator
 
@@ -184,7 +184,7 @@ std::vector<Wave> createWaves(float iniAmp, float iniFreq, float iniSpeed, float
     Waves.resize(NUM_WAVES);
     for (int i = 0; i < NUM_WAVES; i++) {
         Waves[i].amp = iniAmp * pow(fbmAmp, i);
-        Waves[i].freq = iniFreq * pow(fbmFreq, i);
+        Waves[i].freq = 2.0f / iniLen;
         Waves[i].speed = iniSpeed * pow(speedRamp, i);
         //Waves[i].phase = Waves[i].speed * (float)sqrt(9.81f * PI * Waves[i].freq);
         //Waves[i].speed = 10.0f / sqrt(9.81f/(2.0f*PI*Waves[i].freq));
@@ -1337,7 +1337,7 @@ private:
 
     void createWaveShaderStorageBuffers() {
         // Initialize waves
-        std::vector<Wave> waves{ createWaves(1.0f, 1.0f, 2.0f, 0.0f) };
+        std::vector<Wave> waves{ createWaves(1.0f, 1.0f, 1.0f, 0.0f) };
 
         VkDeviceSize bufferSize = sizeof(Wave) * waves.size();
 
@@ -1699,7 +1699,7 @@ private:
         float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
 
         UniformBufferObject ubo{};
-        ubo.eye = glm::vec3(0.0f, 5.0f, 30.0f);
+        ubo.eye = glm::vec3(0.0f, 10.0f, 30.0f);
         ubo.model = glm::mat4(1.0f);
         ubo.view = glm::lookAt(ubo.eye, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
         ubo.invView = glm::inverse(ubo.view);

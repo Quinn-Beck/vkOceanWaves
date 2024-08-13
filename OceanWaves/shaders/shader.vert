@@ -23,6 +23,7 @@ layout(std140, binding = 2) buffer VertexSSBO {
 layout(location = 0) out vec3 fragCoord;
 layout(location = 1) out vec3 fragNormal;
 layout(location = 2) out vec3 fragView;
+layout(location = 3) out vec3 lightDir;
 
 void main() {
     uint index = gl_VertexIndex;
@@ -40,7 +41,8 @@ void main() {
 
     fragCoord = vec3(vertPosition) / vertPosition.w;
     fragNormal = normalize(vec3(ubo.normalMat * vec4(normal, 1.0)));
-    fragView = normalize(ubo.view * ubo.model * vec4(ubo.eye - position, 1.0)).xyz;
+    fragView = normalize((ubo.view * ubo.model * vec4(ubo.eye - position, 1.0)).xyz);
+    lightDir = normalize((ubo.view * ubo.model * vec4(0.0,20.0,-20.0,1.0)).xyz);
 
     gl_Position = ubo.proj * ubo.view * ubo.model * vec4(position, 1.0);
 }
