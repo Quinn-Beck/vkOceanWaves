@@ -19,6 +19,7 @@
 #include <cstring>
 #include <cstdlib>
 #include <cstdint>
+#include <cmath>
 #include <limits>
 #include <optional>
 #include <set>
@@ -32,8 +33,8 @@ const int MAX_FRAMES_IN_FLIGHT = 2;
 
 const float PI = 3.1415926535897932384626433832795f;
 const int NUM_WAVES = 16;
-const int VERTEX_WIDTH = 1024;
-const int VERTEX_HEIGHT = 1024;
+const int VERTEX_WIDTH = 512;
+const int VERTEX_HEIGHT = 512;
 const int VERTEX_COUNT = VERTEX_WIDTH * VERTEX_HEIGHT;
 const int GRIDSIZE = VERTEX_WIDTH - 1;
 
@@ -130,7 +131,7 @@ struct Wave {
     alignas(4) float angle;
 };
 
-struct UniformBufferObject {
+struct CameraUniformBufferObject {
     alignas(16) glm::vec3 eye;
     alignas(16) glm::mat4 model;
     alignas(16) glm::mat4 view;
@@ -140,6 +141,38 @@ struct UniformBufferObject {
     alignas(16) float t = 1.0f;
 };
 
+struct MaterialUniformBufferObject {
+    alignas(4) int vertexWaveCount;
+    alignas(4) int fragmentWaveCount;
+
+    alignas(4) float vertexSeed;
+    alignas(4) float vertexSeedIter;
+    alignas(4) float vertexFrequency;
+    alignas(4) float vertexFrequencyMult;
+    alignas(4) float vertexAmplitude;
+    alignas(4) float vertexAmplitudeMult;
+    alignas(4) float vertexInitialSpeed;
+    alignas(4) float vertexSpeedRamp;
+    alignas(4) float vertexDrag;
+    alignas(4) float vertexHeight;
+    alignas(4) float vertexMaxPeak;
+    alignas(4) float vertexPeakOffset;
+    alignas(4) float fragmentSeed;
+    alignas(4) float fragmentSeedIter;
+    alignas(4) float fragmentFrequency;
+    alignas(4) float fragmentFrequencyMult;
+    alignas(4) float fragmentAmplitude;
+    alignas(4) float fragmentAmplitudeMult;
+    alignas(4) float fragmentInitialSpeed;
+    alignas(4) float fragmentSpeedRamp;
+    alignas(4) float fragmentDrag;
+    alignas(4) float fragmentHeight;
+    alignas(4) float fragmentMaxPeak;
+    alignas(4) float fragmentPeakOffset;
+
+    alignas(4) float normalStrength;
+};
+
 // Generate a grid of vertices
 std::vector<Vertex> generateVertexGrid(int width, int height) {
     std::vector<Vertex> tempVertices;
@@ -147,9 +180,9 @@ std::vector<Vertex> generateVertexGrid(int width, int height) {
         for (int i = 0; i < width; i++) {
             Vertex vertex;
             vertex.pos = glm::vec3(
-                50.0f*((i / (float)(width - 1)) * 2.0f - 1.0f),
+                10.0f*((i / (float)(width - 1)) * 2.0f - 1.0f),
                 0.0f,
-                50.0f*((j / (float)(height - 1)) * 2.0f - 1.0f));
+                10.0f*((j / (float)(height - 1)) * 2.0f - 1.0f));
             vertex.norm = glm::vec3(0.0f, 1.0f, 0.0f);
             vertex.color = glm::vec3(1.0f);
             tempVertices.push_back(vertex);
@@ -163,41 +196,36 @@ std::vector<Wave> createWaves(float iniAmp, float iniLen, float iniSpeed, float 
     std::mt19937 gen(rd()); // Mersenne Twister generator
 
     // Create a uniform distribution between 0 and 1
-    std::uniform_real_distribution<> dis(0.0f, 2.0f*PI);
+    std::uniform_real_distribution<> dis(0.0f, 1.0f);
 
-    // Initialize waves
-    //int NUM_WAVES = 8;
-    float fbmAmp = 0.8f;
-    float fbmFreq = 1.18f;
-    float speedRamp = 1.07f;
+    // Procedural wave settings
     float medianWavelength = 1.0f;
-    float wavelengthRange = 1.0f;
-    float medianDirection = 0.0f;
-    float directionalRange = 30.0f;
-    float medianAmplitude = 1.0f;
-    float medianSpeed = 1.0f;
+    float wavelengthRange = 1.5f;
+    float wavelengthMin = medianWavelength / (1.0f + wavelengthRange);
+    float wavelengthMax = medianWavelength * (1.0f + wavelengthRange);
+
+    float medianAngle = 0.0f;
+    float angleRange = PI / 6.0f;
+    float angleMin = medianAngle - angleRange;
+    float angleMax = medianAngle + angleRange;
+
+    float medianSpeed = 0.5f;
     float speedRange = 0.1f;
     float speedMin = std::max(0.01f, medianSpeed - speedRange);
     float speedMax = medianSpeed + speedRange;
 
+    float medianAmplitude = 1.0f;
+    float ampOverLen = medianAmplitude / medianWavelength;
+
     std::vector<Wave> Waves;
     Waves.resize(NUM_WAVES);
     for (int i = 0; i < NUM_WAVES; i++) {
-        Waves[i].amp = iniAmp * pow(fbmAmp, i);
-        Waves[i].freq = 2.0f / iniLen;
-        Waves[i].speed = iniSpeed * pow(speedRamp, i);
-        //Waves[i].phase = Waves[i].speed * (float)sqrt(9.81f * PI * Waves[i].freq);
-        //Waves[i].speed = 10.0f / sqrt(9.81f/(2.0f*PI*Waves[i].freq));
-        //Waves[i].speed = Waves[i].freq / (Waves[i].amp + 0.5f) + 0.1f*i;
-        //Waves[i].angle = iniAngle + pow(-1.0f, i) * i * deltaAngle;
-        if (i < 1) {
-            Waves[i].angle = iniAngle;
-            Waves[i].freq = 2.0f / iniLen;
-        }
-        else { 
-            Waves[i].angle = iniAngle + dis(gen);
-            Waves[i].freq = Waves[i - 1].freq * pow(fbmFreq, i);
-        }
+        float len = wavelengthMin + (wavelengthMax - wavelengthMin)*dis(gen);
+        float spd = speedMin + (speedMax - speedMin)*dis(gen);
+        Waves[i].angle = angleMin + (angleMax - angleMin) * dis(gen);
+        Waves[i].amp = len * ampOverLen;
+        Waves[i].freq = 2.0f / len;
+        Waves[i].speed = spd * std::sqrt(9.8f * 2.0f * PI / len);
     }
 
     return Waves;
@@ -291,9 +319,13 @@ private:
     std::vector<VkBuffer> waveShaderStorageBuffers;
     std::vector<VkDeviceMemory> waveShaderStorageBuffersMemory;
 
-    std::vector<VkBuffer> uniformBuffers;
-    std::vector<VkDeviceMemory> uniformBuffersMemory;
-    std::vector<void*> uniformBuffersMapped;
+    std::vector<VkBuffer> cameraBuffers;
+    std::vector<VkDeviceMemory> cameraBuffersMemory;
+    std::vector<void*> cameraBuffersMapped;
+
+    VkBuffer materialBuffer;
+    VkDeviceMemory materialBufferMemory;
+    void* materialBufferMapped;
 
     VkDescriptorPool descriptorPool;
     std::vector<VkDescriptorSet> descriptorSets;
@@ -368,6 +400,7 @@ private:
         createShaderStorageBuffers();
         createWaveShaderStorageBuffers();
         createUniformBuffers();
+        updateStaticUniformBuffer();
         createDescriptorPool();
         createDescriptorSets();
         createCommandBuffers();
@@ -428,9 +461,12 @@ private:
         vkDestroyRenderPass(device, renderPass, nullptr);
 
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-            vkDestroyBuffer(device, uniformBuffers[i], nullptr);
-            vkFreeMemory(device, uniformBuffersMemory[i], nullptr);
+            vkDestroyBuffer(device, cameraBuffers[i], nullptr);
+            vkFreeMemory(device, cameraBuffersMemory[i], nullptr);
         }
+
+        vkDestroyBuffer(device, materialBuffer, nullptr);
+        vkFreeMemory(device, materialBufferMemory, nullptr);
 
         vkDestroyDescriptorPool(device, descriptorPool, nullptr);
 
@@ -912,34 +948,40 @@ private:
     }
 
     void createDescriptorSetLayout() {
-        std::array<VkDescriptorSetLayoutBinding, 4> layoutBindings{};
-        layoutBindings[0].binding = 0;
+        std::array<VkDescriptorSetLayoutBinding, 5> layoutBindings{};
+        layoutBindings[0].binding = 0; // CameraUBO
         layoutBindings[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         layoutBindings[0].descriptorCount = 1;
         layoutBindings[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
         layoutBindings[0].pImmutableSamplers = nullptr;
 
-        layoutBindings[1].binding = 1;
+        layoutBindings[1].binding = 1; // VertexSSBO1
         layoutBindings[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         layoutBindings[1].descriptorCount = 1;
         layoutBindings[1].stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
         layoutBindings[1].pImmutableSamplers = nullptr;
 
-        layoutBindings[2].binding = 2;
+        layoutBindings[2].binding = 2; // VertexSSBO2
         layoutBindings[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         layoutBindings[2].descriptorCount = 1;
         layoutBindings[2].stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
         layoutBindings[2].pImmutableSamplers = nullptr;
 
-        layoutBindings[3].binding = 3;
+        layoutBindings[3].binding = 3; // WaveSSBO
         layoutBindings[3].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         layoutBindings[3].descriptorCount = 1;
         layoutBindings[3].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
         layoutBindings[3].pImmutableSamplers = nullptr;
 
+        layoutBindings[4].binding = 4; // MaterialUBO
+        layoutBindings[4].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        layoutBindings[4].descriptorCount = 1;
+        layoutBindings[4].stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
+        layoutBindings[4].pImmutableSamplers = nullptr;
+
         VkDescriptorSetLayoutCreateInfo layoutInfo{};
         layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        layoutInfo.bindingCount = 4;
+        layoutInfo.bindingCount = 5;
         layoutInfo.pBindings = layoutBindings.data();
         if (vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS) {
             throw std::runtime_error("failed to create descriptor set layout!");
@@ -1371,25 +1413,33 @@ private:
     }
 
     void createUniformBuffers() {
-        VkDeviceSize bufferSize = sizeof(UniformBufferObject);
+        VkDeviceSize bufferSize = sizeof(CameraUniformBufferObject);
 
-        uniformBuffers.resize(MAX_FRAMES_IN_FLIGHT);
-        uniformBuffersMemory.resize(MAX_FRAMES_IN_FLIGHT);
-        uniformBuffersMapped.resize(MAX_FRAMES_IN_FLIGHT);
+        cameraBuffers.resize(MAX_FRAMES_IN_FLIGHT);
+        cameraBuffersMemory.resize(MAX_FRAMES_IN_FLIGHT);
+        cameraBuffersMapped.resize(MAX_FRAMES_IN_FLIGHT);
 
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
             createBuffer(bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                uniformBuffers[i], uniformBuffersMemory[i]);
+                cameraBuffers[i], cameraBuffersMemory[i]);
 
-            // persistent mapping of uniform buffer to pointer
-            vkMapMemory(device, uniformBuffersMemory[i], 0, bufferSize, 0, &uniformBuffersMapped[i]);
+            // persistent mapping of camera buffer to pointer
+            vkMapMemory(device, cameraBuffersMemory[i], 0, bufferSize, 0, &cameraBuffersMapped[i]);
         }
+
+        bufferSize = sizeof(MaterialUniformBufferObject);
+
+        createBuffer(bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+            materialBuffer, materialBufferMemory);
+
+        // persistent mapping of material buffer to pointer
+        vkMapMemory(device, materialBufferMemory, 0, bufferSize, 0, &materialBufferMapped);
     }
 
     void createDescriptorPool() {
         std::array<VkDescriptorPoolSize, 2> poolSizes{};
         poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        poolSizes[0].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+        poolSizes[0].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT) * 2; // 2 for cameraUBO, 2 for materialUBO
 
         poolSizes[1].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         poolSizes[1].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT) * 3;
@@ -1419,19 +1469,19 @@ private:
         }
 
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-            VkDescriptorBufferInfo uniformBufferInfo{};
-            uniformBufferInfo.buffer = uniformBuffers[i];
-            uniformBufferInfo.offset = 0;
-            uniformBufferInfo.range = sizeof(UniformBufferObject);
+            VkDescriptorBufferInfo cameraBufferInfo{};
+            cameraBufferInfo.buffer = cameraBuffers[i];
+            cameraBufferInfo.offset = 0;
+            cameraBufferInfo.range = sizeof(CameraUniformBufferObject);
 
-            std::array<VkWriteDescriptorSet, 4> descriptorWrites{};
+            std::array<VkWriteDescriptorSet, 5> descriptorWrites{};
             descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
             descriptorWrites[0].dstSet = descriptorSets[i];
             descriptorWrites[0].dstBinding = 0;
             descriptorWrites[0].dstArrayElement = 0;
             descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
             descriptorWrites[0].descriptorCount = 1;
-            descriptorWrites[0].pBufferInfo = &uniformBufferInfo;
+            descriptorWrites[0].pBufferInfo = &cameraBufferInfo;
 
             VkDescriptorBufferInfo storageBufferInfoLastFrame{};
             storageBufferInfoLastFrame.buffer = shaderStorageBuffers[(i - 1) % MAX_FRAMES_IN_FLIGHT];
@@ -1472,9 +1522,21 @@ private:
             descriptorWrites[3].descriptorCount = 1;
             descriptorWrites[3].pBufferInfo = &waveBufferInfo;
 
-            vkUpdateDescriptorSets(device, 4, descriptorWrites.data(), 0, nullptr);
-        }
+            VkDescriptorBufferInfo materialBufferInfo{};
+            materialBufferInfo.buffer = materialBuffer;
+            materialBufferInfo.offset = 0;
+            materialBufferInfo.range = sizeof(MaterialUniformBufferObject);
 
+            descriptorWrites[4].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            descriptorWrites[4].dstSet = descriptorSets[i];
+            descriptorWrites[4].dstBinding = 4;
+            descriptorWrites[4].dstArrayElement = 0;
+            descriptorWrites[4].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            descriptorWrites[4].descriptorCount = 1;
+            descriptorWrites[4].pBufferInfo = &materialBufferInfo;
+
+            vkUpdateDescriptorSets(device, 5, descriptorWrites.data(), 0, nullptr);
+        }
 
     }
 
@@ -1631,8 +1693,6 @@ private:
 
         VkDeviceSize offsets[] = { 0 };
         vkCmdBindVertexBuffers(commandBuffer, 0, 1, &shaderStorageBuffers[currentFrame], offsets);
-
-        // Ignore until index buffer is implemented
         
         vkCmdBindIndexBuffer(commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
         
@@ -1702,18 +1762,53 @@ private:
         auto currentTime = std::chrono::high_resolution_clock::now();
         float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
 
-        UniformBufferObject ubo{};
-        ubo.eye = glm::vec3(0.0f, 10.0f, 30.0f);
+        CameraUniformBufferObject ubo{};
+        ubo.eye = glm::vec3(0.0f, 4.0f, 10.0f);
         ubo.model = glm::mat4(1.0f);
         ubo.view = glm::lookAt(ubo.eye, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
         ubo.invView = glm::inverse(ubo.view);
         // True while ubo.model is identity matrix!
         ubo.normalMat = glm::transpose(ubo.invView);
-        ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float)swapChainExtent.height, 0.1f, 200.0f);
+        ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float)swapChainExtent.height, 0.1f, 20.0f);
         ubo.proj[1][1] *= -1;
         ubo.t = time;
 
-        memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
+        memcpy(cameraBuffersMapped[currentImage], &ubo, sizeof(ubo));
+    }
+
+    void updateStaticUniformBuffer() {
+        MaterialUniformBufferObject materialUBO{};
+        materialUBO.vertexWaveCount = 8;
+        materialUBO.fragmentWaveCount = 40;
+
+        materialUBO.vertexSeed = 0.0f;
+        materialUBO.vertexSeedIter = 1253.2131f;
+        materialUBO.vertexFrequency = 1.0f;
+        materialUBO.vertexFrequencyMult = 1.18f;
+        materialUBO.vertexAmplitude = 1.0f;
+        materialUBO.vertexAmplitudeMult = 0.82f;
+        materialUBO.vertexInitialSpeed = 2.0f;
+        materialUBO.vertexSpeedRamp = 1.07f;
+        materialUBO.vertexDrag = 1.0f;
+        materialUBO.vertexHeight = 1.0f;
+        materialUBO.vertexMaxPeak = 1.0f;
+        materialUBO.vertexPeakOffset = 1.0f;
+        materialUBO.fragmentSeed = 0.0f;
+        materialUBO.fragmentSeedIter = 1253.2131f;
+        materialUBO.fragmentFrequency = 1.0f;
+        materialUBO.fragmentFrequencyMult = 1.18f;
+        materialUBO.fragmentAmplitude = 1.0f;
+        materialUBO.fragmentAmplitudeMult = 0.82f;
+        materialUBO.fragmentInitialSpeed = 2.0f;
+        materialUBO.fragmentSpeedRamp = 1.07f;
+        materialUBO.fragmentDrag = 1.0f;
+        materialUBO.fragmentHeight = 1.0f;
+        materialUBO.fragmentMaxPeak = 1.0f;
+        materialUBO.fragmentPeakOffset = 1.0f;
+
+        materialUBO.normalStrength = 1;
+
+        memcpy(materialBufferMapped, &materialUBO, sizeof(materialUBO));
     }
 
     void drawFrame() {

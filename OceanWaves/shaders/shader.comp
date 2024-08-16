@@ -23,7 +23,7 @@ vec2 polarToCartesian(float r, float theta) {
     return vec2(x, y);
 }
 
-layout(std140, binding = 0) uniform ParameterUBO {
+layout(std140, binding = 0) uniform CameraUBO {
 	vec3 eye;
 	mat4 model;
 	mat4 view;
@@ -45,6 +45,109 @@ layout(std140, binding = 3) readonly buffer WaveSSBO {
 	Wave Waves[ ];
 };
 
+layout(std140, binding = 4) uniform MaterialUBO {
+	int vertexWaveCount;
+    int fragmentWaveCount;
+
+    float vertexSeed;
+    float vertexSeedIter;
+    float vertexFrequency;
+    float vertexFrequencyMult;
+    float vertexAmplitude;
+    float vertexAmplitudeMult;
+    float vertexInitialSpeed;
+    float vertexSpeedRamp;
+    float vertexDrag;
+    float vertexHeight;
+    float vertexMaxPeak;
+    float vertexPeakOffset;
+    float fragmentSeed;
+    float fragmentSeedIter;
+    float fragmentFrequency;
+    float fragmentFrequencyMult;
+    float fragmentAmplitude;
+    float fragmentAmplitudeMult;
+    float fragmentInitialSpeed;
+    float fragmentSpeedRamp;
+    float fragmentDrag;
+    float fragmentHeight;
+    float fragmentMaxPeak;
+    float fragmentPeakOffset;
+
+    float normalStrength;
+} mUBO;
+
+// Acerola FBM functions
+vec3 vertexFBM(vec3 vert) {
+	float freq = mUBO.vertexFrequency;
+	float amp = mUBO.vertexAmplitude;
+	float speed = mUBO.vertexInitialSpeed;
+	float seed = mUBO.vertexSeed;
+	vec3  p = vert;
+	float ampSum = 0.0;
+
+	float height = 0.0;
+	vec2  norm = vec2(0.0);
+	for (int i = 0; i < mUBO.vertexWaveCount; ++i) {
+		vec2 d = normalize(vec2(cos(seed), sin(seed))); // normalized direction vector
+
+		float x = dot(d, p.xz) * freq + ubo.t * speed;
+		float wave = amp * exp(mUBO.vertexMaxPeak * sin(x) - mUBO.vertexPeakOffset);
+		float dx = mUBO.vertexMaxPeak * wave * cos(x);
+					
+		height += wave;
+					
+		p.xz += d * -dx * amp * mUBO.vertexDrag;
+
+		ampSum += amp;
+		freq *= mUBO.vertexFrequencyMult;
+		amp *= mUBO.vertexAmplitudeMult;
+		speed *= mUBO.vertexSpeedRamp;
+		seed += mUBO.vertexSeedIter;
+	}
+
+	vec3 fbmOut = vec3(height, norm.x, norm.y) / ampSum; // storing the wave height and partial derivatives in a single output vec
+	fbmOut.x *= mUBO.vertexHeight;
+
+	return fbmOut;
+}
+
+vec3 fragmentFBM(vec3 vert) {
+	float freq = mUBO.fragmentFrequency;
+	float amp = mUBO.fragmentAmplitude;
+	float speed = mUBO.fragmentInitialSpeed;
+	float seed = mUBO.fragmentSeed;
+	vec3  p = vert;
+	float ampSum = 0.0;
+
+	float height = 0.0;
+	vec2  norm = vec2(0.0);
+	for (int i = 0; i < mUBO.fragmentWaveCount; ++i) {
+		vec2 d = normalize(vec2(cos(seed), sin(seed))); // normalized direction vector
+
+		float x = dot(d, p.xz) * freq + ubo.t * speed;
+		float wave = amp * exp(mUBO.fragmentMaxPeak * sin(x) - mUBO.fragmentPeakOffset);
+		float dx = mUBO.fragmentMaxPeak * wave * cos(x);
+					
+		height += wave;
+					
+		p.xz += d * -dx * amp * mUBO.fragmentDrag;
+
+		ampSum += amp;
+		freq *= mUBO.fragmentFrequencyMult;
+		amp *= mUBO.fragmentAmplitudeMult;
+		speed *= mUBO.fragmentSpeedRamp;
+		seed += mUBO.fragmentSeedIter;
+	}
+
+	vec3 fbmOut = vec3(height, norm.x, norm.y) / ampSum; // storing the wave height and partial derivatives in a single output vec
+	fbmOut.x *= mUBO.fragmentHeight;
+
+	return fbmOut;
+}
+
+
+
 layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 
 void main() {
@@ -59,32 +162,54 @@ void main() {
 	float partialHeightX = 0.0;
 	float partialHeightZ = 0.0;
 	float sumOfWeights = 0.0;
+	vec3 norm = vec3(0.0);
 	vec2 sampleVertex = vec2(verticesIn[index].pos.x, verticesIn[index].pos.z);
+
+	vec3 fbm = vertexFBM(vertexIn.pos);
+
+	waveHeight = fbm.x;
+	norm.xy = fbm.yz;
+
+	/*
 	for (int i = 0; i < 4; i++) {
 		vec2 waveDir = polarToCartesian(1.0, Waves[i].angle);
-		//vec2 sampleVertex = vec2(verticesIn[index].pos.x, verticesIn[index].pos.z);
-		//vec2 sampleVertex = vec2(verticesIn[index].pos.x + partialWaveX, verticesIn[index].pos.z + partialWaveZ);
 
-		//float arg = dot(waveDir, sampleVertex) * Waves[i].freq + ubo.t*Waves[i].speed + (length(sampleVertex) * 0.1);
-
-		float arg = dot(waveDir, sampleVertex) * Waves[i].freq + ubo.t*Waves[i].speed*Waves[i].freq;
-
+		// --------------------
+		// Euler Waves
+		// --------------------
+		
+		float arg = dot(waveDir, sampleVertex) * Waves[i].freq + ubo.t*Waves[i].speed;
 		waveTerm = Waves[i].amp * exp( sin( arg ) - 1.0 );
 		waveHeight += waveTerm;
 
 		partialWaveX = waveDir.x * Waves[i].freq * Waves[i].amp * cos( arg ) * waveTerm;
 		partialWaveZ = waveDir.y * Waves[i].freq * Waves[i].amp * cos( arg ) * waveTerm;
-		
 		partialHeightX += partialWaveX;
 		partialHeightZ += partialWaveZ;
+		
 
-		sampleVertex += waveDir * partialWaveX * Waves[i].amp * 0.38; // 0.38 is the drag multiplier
+		// --------------------
+		// Steep Sine
+		// --------------------
+		
+		float arg = dot(waveDir, sampleVertex) * Waves[i].freq + ubo.t*Waves[i].speed;
+		waveTerm = 2.0 * Waves[i].amp * pow( (sin( arg ) + 1.0) / 2.0, 2.0 );
+		waveHeight += waveTerm;
+
+		partialWaveX = 2.0 * waveDir.x * Waves[i].freq * Waves[i].amp * cos( arg ) * pow( (sin( arg ) + 1.0) / 2.0, 1.0 );
+		partialWaveZ = 2.0 * waveDir.y * Waves[i].freq * Waves[i].amp * cos( arg ) * pow( (sin( arg ) + 1.0) / 2.0, 1.0 );
+		partialHeightX += partialWaveX;
+		partialHeightZ += partialWaveZ;
+		
 
 		sumOfWeights += Waves[i].amp;
 	}
 	waveHeight /= sumOfWeights;
+	//partialHeightX /= sumOfWeights;
+	//partialHeightZ /= sumOfWeights;
+	*/
 
-	verticesOut[index].pos = vec3(verticesIn[index].pos.x, waveHeight, verticesIn[index].pos.z);
-	verticesOut[index].norm = normalize(vec3( -partialHeightX, 1.0, -partialHeightZ ));
+	verticesOut[index].pos = vec3(verticesIn[index].pos.x, fbm.x, verticesIn[index].pos.z);
+	verticesOut[index].norm = normalize(vec3( -norm.x, 1.0, -norm.y ));
 	verticesOut[index].color = verticesOut[index].norm;
 }

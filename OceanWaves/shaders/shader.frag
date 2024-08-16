@@ -34,10 +34,42 @@ void main() {
           diffuse *= diffuse * ambient;
 
     // specular reflection
-    vec3 specular = sunColor * pow( max(0.0, dot(n, h)), 50.0 );
+    vec3 specular = sunColor * pow( max(0.0, dot(n, h)), 128.0 );
 
     vec3 C = mix(vec3(0.0), vec3(1.0), diffuse + vec3(0.0,0.0,0.1) + specular);
 
+    // PBR TEST SHADING MODEL -------------------------------------------------
+
+    vec3 upwelling = vec3(0.0, 0.2, 0.3);
+    vec3 sky = vec3(0.69, 0.84, 1.0);
+    vec3 air = vec3(0.1, 0.1, 0.1);
+    float kDiffuse = 0.91;
+    float snell = 1.33;
+
+    // REFLECTIVITY
+    float R;
+    vec3 I = lightDir;
+    vec3 N = fragNormal;
+    float costhetai = abs( dot(I, N) );
+    float thetai = acos( costhetai );
+    float sinthetat = sin(thetai) / snell;
+    float thetat = asin( sinthetat );
+
+    // Check for direct hit
+    if (thetai == 0.0) {
+        R = (snell - 1.0) / (snell + 1.0);
+        R = R * R;
+    } else {
+        float fs = sin(thetat - thetai) / sin(thetat + thetai);
+        float ts = tan(thetat - thetai) / tan(thetat + thetai);
+        R = 0.5 * ( fs*fs + ts*ts );
+    }
+
+    vec3 dPE = fragView;
+    float dist = kDiffuse * length(dPE);
+    dist = exp(-dist);
+
+    vec3 Ci = dist * ( R * sky + (1-R) * upwelling) + (1-dist) * air;
 
     outColor = vec4(C, 1.0);
 }
